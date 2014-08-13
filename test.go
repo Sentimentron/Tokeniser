@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"database/sql"
 	"encoding/gob"
 	"flag"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"math"
 	"os"
 	"runtime/pprof"
+	"strings"
 )
 
 func generateTokenSequenceFromInt(in string, split uint64) []string {
@@ -51,6 +53,26 @@ func readPossibleTokens() map[string]float64 {
 	return ret
 }
 
+func splitToProbableSequence(in string, words map[string]float64) ([]string, float64) {
+
+	var maxSeq []string
+	var mask uint64
+	max := math.Inf(-1)
+	for i := uint64(0); i < (1 << uint64(len(in))); i++ {
+		seq := generateTokenSequenceFromInt(in, i)
+		score, pos := scoreTokenSequence(words, seq)
+		//	fmt.Println(seq, score, pos)
+		if pos != -1 {
+			mask |= (1 << uint64(pos))
+		}
+		if score > max {
+			maxSeq = seq
+			max = score
+		}
+	}
+	return maxSeq, max
+}
+
 func main() {
 
 	var cpuprofile = flag.String("cpuprofile", "", "write CPU profile to file")
@@ -65,31 +87,38 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	var maxSeq []string
-	var mask uint64
-	words := readPossibleTokens()
-	max := math.Inf(-1)
+	wordProbs := readPossibleTokens()
 
-	for i := uint64(0); i < (1 << 11); i++ {
-		if i&mask != 0 {
-			continue
-		}
-		seq := generateTokenSequenceFromInt("geniusbaby", i)
-		score, pos := scoreTokenSequence(words, seq)
-		if pos != -1 {
-			mask |= (1 << uint64(pos))
-		}
-		if score > max {
-			maxSeq = seq
-			max = score
+	// Open database
+	db, err := sql.Open("sqlite3", "../emotionannotate/spam.sqlite")
+	if err != nil {
+		panic(err)
+	}
+
+	// Read from the input table
+	sql := "SELECT document FROM input"
+	rows, err := db.Query(sql)
+	if err != nil {
+		panic(err)
+	}
+
+	defer rows.Close()
+	for rows.Next() {
+		var doc string
+		rows.Scan(&doc)
+		words := strings.Split(doc, " ")
+		for _, w := range words {
+			if len(w) == 0 {
+				continue
+			}
+			if w[0] != '#' {
+				continue
+			}
+			fmt.Print(w)
+			fmt.Print(" => ")
+			maxSeq, score := splitToProbableSequence(w[1:], wordProbs)
+			fmt.Println(maxSeq, score)
 		}
 	}
 
-	fmt.Println(max, maxSeq)
-	//possibleLexemes := generatePossibleTokens("geniusbaby")
-	//fmt.Println(possibleLexemes)
-	//possibleCombinations := generatePossibleTokenCombinations(possibleLexemes)
-	//fmt.Println(possibleCombinations)
-	//fmt.Println(generateCoveringLexemes("geniusbaby", possibleLexemes))
-	// fmt.Println(words)
 }
