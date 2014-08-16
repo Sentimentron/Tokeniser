@@ -53,22 +53,60 @@ func readPossibleTokens() map[string]float64 {
 	return ret
 }
 
+func generatePossibleSplitPoints(from map[string]float64, in string, out chan uint64) {
+    var mask uint64
+    var subStrings []int
+    var maxP2 uint8
+    var i uint64
+
+    // Find split points from dictionary
+    for r := range from {
+        var c int
+        for {
+            c = findSubstrings(in, r, subStrings)
+            if c == -1 {
+                subStrings = make([]int, 1 << uint64(len(subStrings)))
+            } else {
+                break
+            }
+        }
+        for _, i := range subStrings[:c] {
+            mask |= (1 << uint8(i))
+        }
+    }
+
+    // Find maximum possible number
+    maxP2 = popCount(mask)
+    for i = 0; i < (2 << maxP2); i++ {
+        out <- permuteInt(i, mask)
+    }
+}
+
 func splitToProbableSequence(in string, words map[string]float64) ([]string, float64) {
 
-	var maxSeq []string
-	var mask uint64
-	max := math.Inf(-1)
-	for i := uint64(0); i < (1 << uint64(len(in))); i++ {
+	if len(in) > 64 {
+		return []string{in}, 0.0
+	}
+
+	// Base case: it's already a word
+	max, _ := scoreTokenSequence(words, []string{in})
+	maxSeq := []string{in}
+	mask := uint64(0)
+	inc := uint64(0)
+
+	for i := uint64(1); i < uint64(1<<uint64(len(in))); {
 		seq := generateTokenSequenceFromInt(in, i)
 		score, pos := scoreTokenSequence(words, seq)
-		//	fmt.Println(seq, score, pos)
 		if pos != -1 {
-			mask |= (1 << uint64(pos))
+			mask |= 1 << uint64(pos)
+			inc = countTrailingBits(mask)
 		}
 		if score > max {
 			maxSeq = seq
 			max = score
 		}
+		i &= ^mask
+		i += (uint64(1) << inc)
 	}
 	return maxSeq, max
 }
