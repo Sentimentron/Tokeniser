@@ -53,8 +53,7 @@ func readPossibleTokens() map[string]float64 {
 	return ret
 }
 
-func generatePossibleSplitPoints(from map[string]float64, in string, out chan uint64) {
-    var mask uint64
+func generatePossibleSplitPoints(from map[string]float64, in string, mask *uint64, out chan<- uint64) {
     var subStrings []int
     var maxP2 uint8
     var i uint64
@@ -62,6 +61,9 @@ func generatePossibleSplitPoints(from map[string]float64, in string, out chan ui
     // Find split points from dictionary
     for r := range from {
         var c int
+        if len(r) <= 3 {
+            continue
+        }
         for {
             c = findSubstrings(in, r, subStrings)
             if c == -1 {
@@ -71,15 +73,21 @@ func generatePossibleSplitPoints(from map[string]float64, in string, out chan ui
             }
         }
         for _, i := range subStrings[:c] {
-            mask |= (1 << uint8(i))
+            *mask |= (1 << uint8(i))
         }
     }
 
     // Find maximum possible number
-    maxP2 = popCount(mask)
+    var oldMask uint64
+    maxP2 = popCount(*mask)
     for i = 0; i < (2 << maxP2); i++ {
-        out <- permuteInt(i, mask)
+        out <- permuteInt(i, *mask)
+        if oldMask != *mask {
+            oldMask = *mask
+            maxP2 = popCount(oldMask)
+        }
     }
+    close(out)
 }
 
 func splitToProbableSequence(in string, words map[string]float64) ([]string, float64) {
@@ -88,13 +96,17 @@ func splitToProbableSequence(in string, words map[string]float64) ([]string, flo
 		return []string{in}, 0.0
 	}
 
+	mask := uint64(0)
+    
+    tokens := make(chan uint64, mask)
+    go generatePossibleSplitPoints(words, in, &mask, tokens)
+
 	// Base case: it's already a word
 	max, _ := scoreTokenSequence(words, []string{in})
 	maxSeq := []string{in}
-	mask := uint64(0)
 	inc := uint64(0)
 
-	for i := uint64(1); i < uint64(1<<uint64(len(in))); {
+	for i := range tokens {
 		seq := generateTokenSequenceFromInt(in, i)
 		score, pos := scoreTokenSequence(words, seq)
 		if pos != -1 {

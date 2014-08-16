@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-func readPossibleTokens() map[string]float64 {
+func readPossibleTokensFromSqlite() map[string]float64 {
 
 	ret := make(map[string]float64)
 	total := 0
@@ -45,6 +45,7 @@ func readPossibleTokens() map[string]float64 {
 			if w[0] == '#' || w[0] == '@' {
 				continue
 			}
+			// Need to make the string lower-case and strip punctuation
 			tmp[w]++
 			total++
 		}
@@ -78,7 +79,7 @@ func main() {
 	}
 	defer fo.Close()
 
-	words := readPossibleTokens()
+	words := readPossibleTokensFromSqlite()
 	r := bufio.NewWriter(fo)
 	w := gob.NewEncoder(r)
 	w.Encode(words)

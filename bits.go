@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+//	"fmt"
 )
 
 func countTrailingBits(mask uint64) uint64 {
@@ -38,7 +38,7 @@ func permuteInt(orig, mask uint64) uint64 {
 			break
 		}
 
-		fmt.Println(origCnt, maskCnt)
+		//		fmt.Println(origCnt, maskCnt)
 		if orig&(1<<origCnt) != 0 {
 			ret |= 1 << maskCnt
 		}
