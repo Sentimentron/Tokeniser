@@ -7,9 +7,56 @@ import (
         _ "github.com/mattn/go-sqlite3"
     "database/sql"
         "strings"
-
-
+        "bytes"
+        "os"
+        "bufio"
+        "encoding/gob"
 )
+
+func join(what []string, with string) string {
+    var buf bytes.Buffer
+    for _, w := range what {
+        if w[len(w)-1] == with[0] {
+            buf.WriteString(w[:len(w)-1])
+        } else {
+            buf.WriteString(w)
+        }
+        buf.WriteString(with)
+    }
+    return buf.String()
+}
+
+func expandHashtags(in <-chan []string, out chan <- []string) {
+
+   fi, err := os.Open("hashtags.gob")
+   if err != nil {
+       panic(err)
+   }
+   defer fi.Close()
+
+   r := bufio.NewReader(fi)
+   d := gob.NewDecoder(r)
+
+   tags := make(map[string]string)
+
+   d.Decode(&tags)
+   for {
+        // Read the next tweet
+        tweet, ok := <-in
+        if ok {
+            for i, w := range tweet {
+                if r, ok := tags[w]; ok {
+                    tweet[i] = r
+                }
+            }
+            out <- tweet
+        } else {
+            close(out)
+            break
+        }
+    }
+
+}
 
 func spellcheck(in <-chan []string, out chan <- []string) {
 
@@ -32,6 +79,7 @@ func spellcheck(in <-chan []string, out chan <- []string) {
                     }
                 }
             }
+            out <- tweet
         } else {
             close(out)
             break
@@ -185,22 +233,24 @@ func readTweets(out chan <- []string) {
         words := strings.Split(doc, " ")
         out <- words
     }
+    close(out)
 }
 
 
 func main() {
 
-    replaceChan := make(chan []string, 16)
-    abbrevChan := make(chan []string, 16)
-    spellCheckChan := make(chan []string, 16)
+    replaceChan := make(chan []string, 512)
+    abbrevChan := make(chan []string, 512)
+    spellCheckChan := make(chan []string, 512)
+    hashtagsChan := make(chan []string, 512)
 
     go readTweets(replaceChan)
     go replaceFeatures(replaceChan, abbrevChan)
     go expandAbbreviations(abbrevChan, spellCheckChan)
+    go expandHashtags(spellCheckChan, hashtagsChan)
 
-    for i := range spellCheckChan {
-        fmt.Println(i)
+    for i := range hashtagsChan {
+        fmt.Println(join(i, " "))
     }
-
 
 }
