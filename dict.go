@@ -11,6 +11,7 @@ import (
 	"os"
 	"runtime/pprof"
 	"strings"
+    "regexp"
 )
 
 func readPossibleTokensFromSqlite() map[string]float64 {
@@ -18,6 +19,9 @@ func readPossibleTokensFromSqlite() map[string]float64 {
 	ret := make(map[string]float64)
 	total := 0
 	tmp := make(map[string]int)
+
+    // Compile replacement regexp
+    replaceRegex := regexp.MustCompile("[^a-z0-9]")
 
 	// Open database
 	db, err := sql.Open("sqlite3", "../emotionannotate/spam.sqlite")
@@ -46,6 +50,11 @@ func readPossibleTokensFromSqlite() map[string]float64 {
 				continue
 			}
 			// Need to make the string lower-case and strip punctuation
+			w = strings.ToLower(w)
+            w = replaceRegex.ReplaceAllString(w, "")
+            if len(w) == 0 {
+                continue
+            }
 			tmp[w]++
 			total++
 		}

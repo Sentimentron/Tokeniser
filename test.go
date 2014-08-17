@@ -12,6 +12,8 @@ import (
 	"os"
 	"runtime/pprof"
 	"strings"
+    "regexp"
+    "bytes"
 )
 
 func generateTokenSequenceFromInt(in string, split uint64) []string {
@@ -53,15 +55,16 @@ func readPossibleTokens() map[string]float64 {
 	return ret
 }
 
-func generatePossibleSplitPoints(from map[string]float64, in string, mask *uint64, out chan<- uint64) {
+func generatePossibleSplitPoints(from map[string]float64, in string, out chan<- uint64) {
     var subStrings []int
     var maxP2 uint8
     var i uint64
+    var mask uint64
 
     // Find split points from dictionary
     for r := range from {
         var c int
-        if len(r) <= 3 {
+        if len(r) <= 2 {
             continue
         }
         for {
@@ -73,19 +76,14 @@ func generatePossibleSplitPoints(from map[string]float64, in string, mask *uint6
             }
         }
         for _, i := range subStrings[:c] {
-            *mask |= (1 << uint8(i))
+            mask |= (1 << uint8(i))
         }
     }
 
     // Find maximum possible number
-    var oldMask uint64
-    maxP2 = popCount(*mask)
+    maxP2 = popCount(mask)
     for i = 0; i < (2 << maxP2); i++ {
-        out <- permuteInt(i, *mask)
-        if oldMask != *mask {
-            oldMask = *mask
-            maxP2 = popCount(oldMask)
-        }
+        out <- permuteInt(i, mask)
     }
     close(out)
 }
@@ -97,9 +95,9 @@ func splitToProbableSequence(in string, words map[string]float64) ([]string, flo
 	}
 
 	mask := uint64(0)
-    
+
     tokens := make(chan uint64, mask)
-    go generatePossibleSplitPoints(words, in, &mask, tokens)
+    go generatePossibleSplitPoints(words, in, tokens)
 
 	// Base case: it's already a word
 	max, _ := scoreTokenSequence(words, []string{in})
@@ -123,6 +121,15 @@ func splitToProbableSequence(in string, words map[string]float64) ([]string, flo
 	return maxSeq, max
 }
 
+func join(what []string, with string) string {
+    var buf bytes.Buffer
+    for _, w := range what {
+        buf.WriteString(w)
+        buf.WriteString(with)
+    }
+    return buf.String()
+}
+
 func main() {
 
 	var cpuprofile = flag.String("cpuprofile", "", "write CPU profile to file")
@@ -136,6 +143,9 @@ func main() {
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
+
+	// Compile replacement regexp
+    replaceRegex := regexp.MustCompile("[^a-z0-9]")
 
 	wordProbs := readPossibleTokens()
 
@@ -152,6 +162,9 @@ func main() {
 		panic(err)
 	}
 
+	// Output structure
+	tagmap := make(map[string]string)
+
 	defer rows.Close()
 	for rows.Next() {
 		var doc string
@@ -164,11 +177,28 @@ func main() {
 			if w[0] != '#' {
 				continue
 			}
+			_, ok := tagmap[w]
+			if ok {
+                continue
+            }
 			fmt.Print(w)
 			fmt.Print(" => ")
-			maxSeq, score := splitToProbableSequence(w[1:], wordProbs)
+            // Need to make the string lower-case and strip punctuation
+            w = strings.ToLower(w)
+            w = replaceRegex.ReplaceAllString(w, "")
+			maxSeq, score := splitToProbableSequence(w, wordProbs)
 			fmt.Println(maxSeq, score)
+            tagmap[w] = join(maxSeq, " ")
 		}
 	}
+
+	fo, err := os.Create("hashtags.gob")
+    if err != nil {
+        panic(err)
+    }
+    defer fo.Close()
+    r := bufio.NewWriter(fo)
+    w := gob.NewEncoder(r)
+    w.Encode(tagmap)
 
 }
