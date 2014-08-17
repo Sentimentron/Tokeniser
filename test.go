@@ -90,7 +90,7 @@ func generatePossibleSplitPoints(from map[string]float64, in string, out chan<- 
 
 func splitToProbableSequence(in string, words map[string]float64) ([]string, float64) {
 
-	if len(in) > 64 {
+	if len(in) > 24 {
 		return []string{in}, 0.0
 	}
 
@@ -164,6 +164,8 @@ func main() {
 
 	// Output structure
 	tagmap := make(map[string]string)
+    tagcount := make(map[string]int)
+
 
 	defer rows.Close()
 	for rows.Next() {
@@ -181,16 +183,22 @@ func main() {
 			if ok {
                 continue
             }
-			fmt.Print(w)
-			fmt.Print(" => ")
             // Need to make the string lower-case and strip punctuation
             w = strings.ToLower(w)
             w = replaceRegex.ReplaceAllString(w, "")
-			maxSeq, score := splitToProbableSequence(w, wordProbs)
-			fmt.Println(maxSeq, score)
-            tagmap[w] = join(maxSeq, " ")
+            tagcount[w]++
 		}
 	}
+
+	for w := range tagcount {
+        if tagcount[w] < 5 {
+            continue
+        }
+        fmt.Print(w, " => ")
+        maxSeq, score := splitToProbableSequence(w, wordProbs)
+        fmt.Println(maxSeq, score)
+        tagmap[w] = join(maxSeq, " ")
+    }
 
 	fo, err := os.Create("hashtags.gob")
     if err != nil {
